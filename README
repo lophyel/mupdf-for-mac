@@ -4,7 +4,7 @@ I have added or changed fuctions:
 
 0. to run mupdf-x11 on mac is needed xquartz, so I don't compile mupdf-x11 on mac
 
-1. change the Default UI sizes from 16 to 28
+1. change the Default UI sizes from 15 to 28
 
 2. when open the files, jump to the page that was last closed
 
@@ -16,6 +16,7 @@ I have added or changed fuctions:
 
 6. change the old function keys i, l to I, L
 
+7. change the default page width  value from 450 to 900 for epub and html
 
 
 ABOUT
