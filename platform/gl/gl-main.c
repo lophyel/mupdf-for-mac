@@ -36,6 +36,7 @@ static int ui_needs_update = 0;
 static int convert_flags = 0;
 static int index_chage_flag = 0;
 static fz_outline *move_last = NULL;
+static int forward_flags = 1;
 
 static void ui_begin(void)
 {
@@ -171,8 +172,8 @@ static fz_link *links = NULL;
 
 static int number = 0;
 
-static struct texture page_tex = { 0 };
-static int scroll_x = 0, scroll_y = 0;
+static struct texture page_tex = { 0 },page_tex_next = { 0 };
+static int scroll_x = 0, scroll_y = 0, scroll_y_next = 0;
 static int canvas_x = 0, canvas_w = 100;
 static int canvas_y = 0, canvas_h = 100;
 
@@ -182,7 +183,7 @@ static int annot_count = 0;
 static int screen_w = 1280, screen_h = 720;
 static int window_w = 1, window_h = 1;
 
-static int oldpage = 0, currentpage = 0;
+static int oldpage = 0, currentpage = 0,currentpage_next = 0,oldpage_next = 0;
 static float oldzoom = DEFRES, currentzoom = DEFRES;
 static float oldrotate = 0, currentrotate = 0;
 static fz_matrix page_ctm, page_inv_ctm;
@@ -266,7 +267,7 @@ void texture_from_pixmap(struct texture *tex, fz_pixmap *pix)
 	}
 }
 
-void render_page(void)
+void render_page(struct texture *page_tex_arg,int current_page)
 {
 	fz_annot *annot;
 	fz_pixmap *pix;
@@ -277,7 +278,7 @@ void render_page(void)
 
 	fz_drop_page(ctx, page);
 
-	page = fz_load_page(ctx, doc, currentpage);
+	page = fz_load_page(ctx, doc, current_page);
 
 	fz_drop_link(ctx, links);
 	links = NULL;
@@ -289,13 +290,14 @@ void render_page(void)
 		int count = pix->w * pix->h * pix->n;
 		int loop;
 		unsigned int *i;
-		for(loop = 0; loop + 4 < count; loop += 4)
-			{
-				i = (unsigned int *)(pix->samples + loop);
-				*i = ~*i;
-			}
+		// maybe pix->w and pix->h is always even or the last pix is not convert
+		for(loop = 0; loop + 4 <= count; loop += 4)
+		{
+			i = (unsigned int *)(pix->samples + loop);
+			*i = ~*i;
+		}
 	}
-	texture_from_pixmap(&page_tex, pix);
+	texture_from_pixmap(page_tex_arg, pix);
 	fz_drop_pixmap(ctx, pix);
 
 	annot_count = 0;
@@ -807,7 +809,7 @@ static void do_forms(float xofs, float yofs)
 			if (pdf->focus)
 				ui.active = do_forms;
 			pdf_update_page(ctx, (pdf_page*)page);
-			render_page();
+			render_page(&page_tex,currentpage);
 			ui_needs_update = 1;
 		}
 	}
@@ -820,7 +822,7 @@ static void do_forms(float xofs, float yofs)
 		if (pdf_pass_event(ctx, pdf, (pdf_page*)page, &event))
 		{
 			pdf_update_page(ctx, (pdf_page*)page);
-			render_page();
+			render_page(&page_tex,currentpage);
 			ui_needs_update = 1;
 		}
 	}
@@ -885,8 +887,10 @@ static void reload(void)
 		pdf_enable_js(ctx, pdf);
 
 	currentpage = fz_clampi(currentpage, 0, fz_count_pages(ctx, doc) - 1);
+	currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
 
-	render_page();
+	render_page(&page_tex,currentpage);
+	render_page(&page_tex_next,currentpage);
 	update_title();
 }
 
@@ -926,53 +930,50 @@ static void auto_zoom(void)
 
 static void smart_move_backward(int step)
 {
-	if (scroll_y <= 0)
+	scroll_y -= canvas_h * step / 10;
+	if(scroll_y <= 0)
 	{
-		if (scroll_x <= 0)
-		{
-			if (currentpage - 1 >= 0)
-			{
-				scroll_x = page_tex.w;
-				scroll_y = page_tex.h;
-				currentpage -= 1;
-			}
-		}
+		if(currentpage - 1 < 0)
+			scroll_y = 0;
 		else
 		{
-			scroll_y = page_tex.h;
-			scroll_x -= canvas_w * step / 10;
+			forward_flags = 0;
+			currentpage_next = fz_maxi(0, currentpage - 1);
+			scroll_y_next = page_tex.h + scroll_y;
+			if (0 - scroll_y >= canvas_h)
+			{
+				scroll_x = page_tex.w;
+				scroll_y = page_tex.h - canvas_h;
+				currentpage = fz_maxi(0, currentpage - 1);
+				currentpage_next = fz_maxi(0, currentpage - 1);
+			}
 		}
-	}
-	else
-	{
-		scroll_y -= canvas_h * step / 10;
 	}
 }
 
 static void smart_move_forward(int step)
 {
-	if (scroll_y + canvas_h >= page_tex.h)
+	scroll_y += canvas_h * step / 10;
+	if(scroll_y + canvas_h >= page_tex.h)
 	{
-		if (scroll_x + canvas_w >= page_tex.w)
+		if(currentpage + 1 >= fz_count_pages(ctx, doc))
+			scroll_y = page_tex.h - canvas_h;
+		else
 		{
-			if (currentpage + 1 < fz_count_pages(ctx, doc))
+			forward_flags = 1;
+			currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
+			scroll_y_next = scroll_y + canvas_h - page_tex.h;
+			if(scroll_y_next >= canvas_h)
 			{
 				scroll_x = 0;
 				scroll_y = 0;
-				currentpage += 1;
+				currentpage = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
+				currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
 			}
 		}
-		else
-		{
-			scroll_y = 0;
-			scroll_x += canvas_w * step / 10;
-		}
-	}
-	else
-	{
-		scroll_y += canvas_h * step / 10;
 	}
 }
+
 
 static void quit(void)
 {
@@ -1074,7 +1075,7 @@ static void do_app(void)
 		case 'I': showinfo = !showinfo; break;
 		case '/': search_dir = 1; showsearch = 1; search_input.p = search_input.text; search_input.q = search_input.end; break;
 		case '?': search_dir = -1; showsearch = 1; search_input.p = search_input.text; search_input.q = search_input.end; break;
-		case 'i': convert_flags = 1 - convert_flags;render_page(); break;
+		case 'i': convert_flags = 1 - convert_flags;render_page(&page_tex,currentpage); render_page(&page_tex_next,currentpage_next); break;
 		case 'k': number = fz_maxi(number, 1); while (number--) smart_move_backward(1); break;
 		case 'j': number = fz_maxi(number, 1); while (number--) smart_move_forward(1); break;
 		case 'h': scroll_x -= 30; break;
@@ -1205,11 +1206,17 @@ static void do_canvas(void)
 	
 	if (oldpage != currentpage || oldzoom != currentzoom || oldrotate != currentrotate)
 	{
-		render_page();
+		render_page(&page_tex,currentpage);
 		update_title();
 		oldpage = currentpage;
 		oldzoom = currentzoom;
 		oldrotate = currentrotate;
+	}
+
+	if (oldpage_next != currentpage_next || oldzoom != currentzoom || oldrotate != currentrotate)
+	{
+		render_page(&page_tex_next,currentpage_next);
+		oldpage_next = currentpage_next;
 	}
 
 	if (ui.x >= canvas_x && ui.x < canvas_x + canvas_w && ui.y >= canvas_y && ui.y < canvas_y + canvas_h)
@@ -1248,18 +1255,13 @@ static void do_canvas(void)
 		x = canvas_x - scroll_x;
 	}
 
-	if (page_tex.h <= canvas_h)
-	{
-		scroll_y = 0;
-		y = canvas_y + (canvas_h - page_tex.h) / 2;
-	}
-	else
-	{
-		scroll_y = fz_clamp(scroll_y, 0, page_tex.h - canvas_h);
-		y = canvas_y - scroll_y;
-	}
-
+	y = canvas_y - scroll_y;
 	ui_draw_image(&page_tex, x - page_tex.x, y - page_tex.y);
+
+	if(!forward_flags && scroll_y <= 0)
+		ui_draw_image(&page_tex_next, x - page_tex_next.x, 0 - (page_tex_next.h + scroll_y) - page_tex_next.y);
+	else if(forward_flags && scroll_y + canvas_h >= page_tex.h)
+		ui_draw_image(&page_tex_next, x - page_tex_next.x, canvas_h - (scroll_y + canvas_h - page_tex_next.h) - page_tex_next.y);
 
 	do_forms(x, y);
 
