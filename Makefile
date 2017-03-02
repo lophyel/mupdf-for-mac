@@ -318,10 +318,12 @@ $(MUVIEW_WIN32) : $(MUVIEW_WIN32_OBJ) $(MUPDF_LIB) $(THIRD_LIB)
 	$(LINK_CMD) $(WIN32_LIBS)
 endif
 
-MUVIEW := $(MUVIEW_X11) $(MUVIEW_WIN32) $(MUVIEW_GLFW)
+#MUVIEW := $(MUVIEW_X11) $(MUVIEW_WIN32) $(MUVIEW_GLFW)
+MUVIEW := $(MUVIEW_GLFW)
 MUVIEW_CURL := $(MUVIEW_X11_CURL) $(MUVIEW_WIN32_CURL)
 
-INSTALL_APPS := $(MUTOOL) $(MUVIEW) $(MURASTER) $(MUJSTEST) $(MUVIEW_CURL)
+INSTALL_APPS := $(MUVIEW)
+#INSTALL_APPS := $(MUTOOL) $(MUVIEW) $(MURASTER) $(MUJSTEST) $(MUVIEW_CURL)
 
 # --- Examples ---
 
@@ -400,7 +402,8 @@ cscope.files: $(shell find include source platform -name '*.[ch]')
 cscope.out: cscope.files
 	cscope -b
 
-all: libs apps
+all: apps
+#all: libs apps
 
 clean:
 	rm -rf $(OUT)
