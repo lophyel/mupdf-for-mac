@@ -1,3 +1,23 @@
+Initial version of source code is http://mupdf.com/downloads/mupdf-1.10a-source.tar.gz
+
+I have added or changed fuctions:
+
+0. to run mupdf-x11 on mac is needed xquartz, so I don't compile mupdf-x11 on mac
+
+1. change the Default UI sizes from 16 to 28
+
+2. when open the files, jump to the page that was last closed
+
+3. add the anti-color function (key i)
+
+4. add jumping function during table of contents (key v/V)
+
+5. add vi-like keys h, j, k, l
+
+6. change the old function keys i, l to I, L
+
+
+
 ABOUT
 
 MuPDF is a lightweight PDF, XPS, EPUB and CBZ viewer and parser/rendering
