@@ -9,7 +9,7 @@ enum
 	SCREEN_FURNITURE_H = 40,
 
 	/* Default EPUB/HTML layout dimensions */
-	DEFAULT_LAYOUT_W = 450,
+	DEFAULT_LAYOUT_W = 900,
 	DEFAULT_LAYOUT_H = 600,
 	DEFAULT_LAYOUT_EM = 12,
 
