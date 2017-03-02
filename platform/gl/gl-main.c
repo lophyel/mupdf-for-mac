@@ -14,13 +14,15 @@ enum
 	DEFAULT_LAYOUT_EM = 12,
 
 	/* Default UI sizes */
-	DEFAULT_UI_FONTSIZE = 15,
-	DEFAULT_UI_BASELINE = 14,
-	DEFAULT_UI_LINEHEIGHT = 18,
+	DEFAULT_UI_FONTSIZE = 28,
+	DEFAULT_UI_BASELINE = 24,
+	DEFAULT_UI_LINEHEIGHT = 30,
 };
 
 #define DEFAULT_WINDOW_W (612 * currentzoom / 72)
 #define DEFAULT_WINDOW_H (792 * currentzoom / 72)
+
+#define CONFIG_FILE ".mupdf"
 
 struct ui ui;
 fz_context *ctx = NULL;
@@ -31,6 +33,9 @@ static int has_ARB_texture_non_power_of_two = 1;
 static GLint max_texture_size = 8192;
 
 static int ui_needs_update = 0;
+static int convert_flags = 0;
+static int index_chage_flag = 0;
+static fz_outline *move_last = NULL;
 
 static void ui_begin(void)
 {
@@ -118,7 +123,7 @@ void ui_draw_image(struct texture *tex, float x, float y)
 	glDisable(GL_BLEND);
 }
 
-static const int zoom_list[] = { 18, 24, 36, 54, 72, 96, 120, 144, 180, 216, 288 };
+static const int zoom_list[] = { 18, 24, 36, 54, 72, 96, 120, 144, 180, 216, 288, 300, 320, 360, 380, 400,  420 };
 
 static int zoom_in(int oldres)
 {
@@ -143,6 +148,14 @@ static int zoom_out(int oldres)
 #define DEFRES 96
 
 static char filename[2048];
+static int file_size = -1;
+static struct filestr_str{
+	struct filestr_str *next;
+	char *filename;
+	int file_size;
+	int page;
+} *filestr_head = NULL,*filestr_end = NULL,*filestr_new = NULL;
+
 static char *password = "";
 static float layout_w = DEFAULT_LAYOUT_W;
 static float layout_h = DEFAULT_LAYOUT_H;
@@ -271,6 +284,17 @@ void render_page(void)
 	links = fz_load_links(ctx, page);
 
 	pix = fz_new_pixmap_from_page_contents(ctx, page, &page_ctm, fz_device_rgb(ctx), 0);
+	if(convert_flags)
+	{
+		int count = pix->w * pix->h * pix->n;
+		int loop;
+		unsigned int *i;
+		for(loop = 0; loop + 4 < count; loop += 4)
+			{
+				i = (unsigned int *)(pix->samples + loop);
+				*i = ~*i;
+			}
+	}
 	texture_from_pixmap(&page_tex, pix);
 	fz_drop_pixmap(ctx, pix);
 
@@ -455,14 +479,90 @@ static int measure_outline_height(fz_outline *node)
 	return h;
 }
 
+static int move_outline_index(fz_outline *node, fz_outline *beg, int end, int up)
+{
+	int p = currentpage;
+	int n = end;
+	int d = end;
+
+	while (node)
+	{
+		if(index_chage_flag)
+			return  0;
+		
+		p = node->page;
+		if (p >= 0)
+		{
+			n = end;
+			if (node->next && node->next->page >= 0)
+			{
+				n = node->next->page;
+			}
+			d = end;
+			if (node->down && node->down->page >= 0)
+			{
+				d = node->down->page;
+			}
+			if (currentpage == p || (currentpage > p && currentpage < n))
+			{
+				if(currentpage <= d || d == end)
+				{
+					if(up)
+					{
+						if(move_last && currentpage > move_last->page)
+							currentpage = move_last->page;
+						else if(beg)
+							currentpage = beg->page;
+						index_chage_flag = 1;
+					}
+					else
+					{
+						if(node->down)
+						{
+							if(currentpage < node->down->page)
+							{
+								currentpage = node->down->page;
+								index_chage_flag = 1;
+							}
+							
+						} else {
+							if(node->next)
+							{
+								if(currentpage < node->next->page)
+								{
+									currentpage = node->next->page;
+									index_chage_flag = 1;
+								}
+							} else if(currentpage < end) {
+								currentpage = end;
+								index_chage_flag = 1;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		move_last = node;
+		if (node->down)
+			move_outline_index(node->down, node, n, up);
+
+		node = node->next;
+	}
+	return 0;
+}
+
 static int do_outline_imp(fz_outline *node, int end, int x0, int x1, int x, int y)
 {
 	int h = 0;
 	int p = currentpage;
 	int n = end;
-
+	int d = end;
+	int flag = 0;
+	
 	while (node)
 	{
+		flag = 0;
 		p = node->page;
 		if (p >= 0)
 		{
@@ -482,14 +582,31 @@ static int do_outline_imp(fz_outline *node, int end, int x0, int x1, int x, int 
 			{
 				n = node->next->page;
 			}
+			d = end;
+			if (node->down && node->down->page >= 0)
+			{
+				d = node->down->page;
+			}
 			if (currentpage == p || (currentpage > p && currentpage < n))
 			{
-				glColor4f(0.9f, 0.9f, 0.9f, 1.0f);
+				if(currentpage <= d || d == end)
+					flag = 1;
+#if 0
+				if(convert_flags)
+					glColor4f(0, 0, 0, 1);
+				else
+					glColor4f(0.9f, 0.9f, 0.9f, 1.0f);
 				glRectf(x0, y + h, x1, y + h + ui.lineheight);
+#endif
 			}
 		}
 
-		glColor4f(0, 0, 0, 1);
+		if(flag)
+			glColor4f(1, 0, 0, 1);
+		else if(convert_flags)
+			glColor4f(1, 1, 1, 1);
+		else
+			glColor4f(0, 0, 0, 1);
 		ui_draw_string(ctx, x, y + h + ui.baseline, node->title);
 		h += ui.lineheight;
 		if (node->down)
@@ -536,7 +653,10 @@ static void do_outline(fz_outline *node, int outline_w)
 	glScissor(0, 0, outline_w, outline_h);
 	glEnable(GL_SCISSOR_TEST);
 
-	glColor4f(1, 1, 1, 1);
+	if(convert_flags)
+		glColor4f(0, 0, 0, 1);
+	else
+		glColor4f(1, 1, 1, 1);
 	glRectf(0, 0, outline_w, outline_h);
 
 	do_outline_imp(outline, fz_count_pages(ctx, doc), 0, outline_w, 10, -outline_scroll_y);
@@ -804,7 +924,7 @@ static void auto_zoom(void)
 		auto_zoom_h();
 }
 
-static void smart_move_backward(void)
+static void smart_move_backward(int step)
 {
 	if (scroll_y <= 0)
 	{
@@ -820,16 +940,16 @@ static void smart_move_backward(void)
 		else
 		{
 			scroll_y = page_tex.h;
-			scroll_x -= canvas_w * 9 / 10;
+			scroll_x -= canvas_w * step / 10;
 		}
 	}
 	else
 	{
-		scroll_y -= canvas_h * 9 / 10;
+		scroll_y -= canvas_h * step / 10;
 	}
 }
 
-static void smart_move_forward(void)
+static void smart_move_forward(int step)
 {
 	if (scroll_y + canvas_h >= page_tex.h)
 	{
@@ -845,17 +965,23 @@ static void smart_move_forward(void)
 		else
 		{
 			scroll_y = 0;
-			scroll_x += canvas_w * 9 / 10;
+			scroll_x += canvas_w * step / 10;
 		}
 	}
 	else
 	{
-		scroll_y += canvas_h * 9 / 10;
+		scroll_y += canvas_h * step / 10;
 	}
 }
 
 static void quit(void)
 {
+	while((filestr_new = filestr_head) != NULL)
+	{
+		filestr_head = filestr_new->next;
+		free(filestr_new);
+	}
+	
 	glfwSetWindowShouldClose(window, 1);
 }
 
@@ -936,18 +1062,25 @@ static void do_app(void)
 		case '>': currentpage += 10 * fz_maxi(number, 1); break;
 		case ',': case KEY_PAGE_UP: currentpage -= fz_maxi(number, 1); break;
 		case '.': case KEY_PAGE_DOWN: currentpage += fz_maxi(number, 1); break;
-		case 'b': number = fz_maxi(number, 1); while (number--) smart_move_backward(); break;
-		case ' ': number = fz_maxi(number, 1); while (number--) smart_move_forward(); break;
+		case 'b': number = fz_maxi(number, 1); while (number--) smart_move_backward(9); break;
+		case ' ': number = fz_maxi(number, 1); while (number--) smart_move_forward(9); break;
 		case 'g': jump_to_page(number - 1); break;
 		case 'G': jump_to_page(fz_count_pages(ctx, doc) - 1); break;
 		case '+': currentzoom = zoom_in(currentzoom); break;
 		case '-': currentzoom = zoom_out(currentzoom); break;
 		case '[': currentrotate += 90; break;
 		case ']': currentrotate -= 90; break;
-		case 'l': showlinks = !showlinks; break;
-		case 'i': showinfo = !showinfo; break;
+		case 'L': showlinks = !showlinks; break;
+		case 'I': showinfo = !showinfo; break;
 		case '/': search_dir = 1; showsearch = 1; search_input.p = search_input.text; search_input.q = search_input.end; break;
 		case '?': search_dir = -1; showsearch = 1; search_input.p = search_input.text; search_input.q = search_input.end; break;
+		case 'i': convert_flags = 1 - convert_flags;render_page(); break;
+		case 'k': number = fz_maxi(number, 1); while (number--) smart_move_backward(1); break;
+		case 'j': number = fz_maxi(number, 1); while (number--) smart_move_forward(1); break;
+		case 'h': scroll_x -= 30; break;
+		case 'l': scroll_x += 30; break;
+		case 'V': if(showoutline){move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),1);} break;
+		case 'v': if(showoutline){move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),0);} break;
 		case KEY_UP: scroll_y -= 10; break;
 		case KEY_DOWN: scroll_y += 10; break;
 		case KEY_LEFT: scroll_x -= 10; break;
@@ -1035,6 +1168,29 @@ static void do_info(void)
 	}
 }
 
+static int set_current_page(void)
+{
+	FILE *fp;
+	char *home = getenv("HOME");
+	char config_file_name[256];
+
+	sprintf(config_file_name,"%s/%s",home,CONFIG_FILE);
+	
+	filestr_head->page = currentpage;
+
+	fp = fopen(config_file_name,"w");
+	if(fp != NULL)
+	{
+		for(filestr_new = filestr_head; filestr_new != NULL;filestr_new = filestr_new->next)
+		{
+			fprintf(fp,"%s\t%d\t%d\n",filestr_new->filename,filestr_new->file_size,filestr_new->page);
+		}
+		fclose(fp);
+	}
+
+	return 1;
+}
+
 static void do_canvas(void)
 {
 	static int saved_scroll_x = 0;
@@ -1044,6 +1200,9 @@ static void do_canvas(void)
 
 	float x, y;
 
+	if(oldpage != currentpage)
+		set_current_page();
+	
 	if (oldpage != currentpage || oldzoom != currentzoom || oldrotate != currentrotate)
 	{
 		render_page();
@@ -1343,6 +1502,95 @@ static void usage(const char *argv0)
 	exit(1);
 }
 
+static int get_file_size(const char *file)
+{
+	unsigned long filesize = -1;  
+	FILE *fp;  
+	fp = fopen(file, "r");  
+	if(fp == NULL)  
+		return filesize;  
+	fseek(fp, 0L, SEEK_END);  
+	filesize = ftell(fp);  
+	fclose(fp);  
+	return filesize;  
+}
+
+static int get_last_close_page(void)
+{
+	FILE *fp;
+	char *line = NULL;
+	size_t linecap = 0;
+	ssize_t linelen;
+	char tmp_name[256];
+	int find_flag = 1;
+	char *home = getenv("HOME");
+	char config_file_name[256];
+
+	sprintf(config_file_name,"%s/%s",home,CONFIG_FILE);
+
+	fp = fopen(config_file_name,"r");
+	if(fp != NULL)
+	{
+		while ((linelen = getline(&line, &linecap, fp)) > 0)
+		{
+			filestr_new = malloc(sizeof(struct filestr_str));
+			memset(filestr_new, 0, sizeof(struct filestr_str));
+
+			memset(tmp_name,0,sizeof(tmp_name));
+			strncpy(tmp_name,line,strchr(line,'\t') - line);
+			sscanf(strchr(line,'\t'),"%d\t%d",&(filestr_new->file_size),&(filestr_new->page));
+
+			filestr_new->filename = malloc(strlen(tmp_name) + 2);
+			memset(filestr_new->filename, 0, strlen(tmp_name) + 2);
+			strcpy(filestr_new->filename,tmp_name);
+
+			if(!strcmp(filestr_new->filename, title) && filestr_new->file_size == file_size)
+			{
+				currentpage = filestr_new->page;
+				find_flag = 0;
+				if(filestr_head == NULL)
+				{
+					filestr_head = filestr_new;
+					filestr_end = filestr_new;
+				} else {
+					filestr_new->next = filestr_head;
+					filestr_head = filestr_new;
+				}
+			} else {
+				if(filestr_head == NULL)
+				{
+					filestr_head = filestr_new;
+					filestr_end = filestr_new;
+				} else {
+					filestr_end->next = filestr_new;
+					filestr_end = filestr_new;
+				}
+			}
+		}
+		fclose(fp);
+	} 
+	if(find_flag)
+	{
+		filestr_new = malloc(sizeof(struct filestr_str));
+		memset(filestr_new, 0, sizeof(struct filestr_str));
+		filestr_new->filename = malloc(strlen(title) + 2);
+		memset(filestr_new->filename, 0, strlen(title) + 2);
+		strcpy(filestr_new->filename,title);
+		filestr_new->file_size = file_size;
+		filestr_new->page = 1;
+		if(filestr_head == NULL)
+		{
+			filestr_head = filestr_new;
+			filestr_end = filestr_new;
+		} else {
+			filestr_new->next = filestr_head;
+			filestr_head = filestr_new;
+		}
+	}
+
+	return 1;
+}
+
 #ifdef _MSC_VER
 int main_utf8(int argc, char **argv)
 #else
@@ -1381,6 +1629,13 @@ int main(int argc, char **argv)
 #endif
 	}
 
+	file_size = get_file_size(filename);
+	if(file_size < 0)
+	{
+		fprintf(stderr, "file is not opend\n");
+		exit(0);
+	}
+
 	title = strrchr(filename, '/');
 	if (!title)
 		title = strrchr(filename, '\\');
@@ -1388,7 +1643,9 @@ int main(int argc, char **argv)
 		++title;
 	else
 		title = filename;
-
+	
+	get_last_close_page();
+	
 	memset(&ui, 0, sizeof ui);
 
 	search_input.p = search_input.text;
