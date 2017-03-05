@@ -1204,19 +1204,15 @@ static void do_canvas(void)
 	if(oldpage != currentpage)
 		set_current_page();
 	
-	if (oldpage != currentpage || oldzoom != currentzoom || oldrotate != currentrotate)
+	if (oldpage_next != currentpage_next || oldpage != currentpage || oldzoom != currentzoom || oldrotate != currentrotate)
 	{
 		render_page(&page_tex,currentpage);
+		render_page(&page_tex_next,currentpage_next);
 		update_title();
+		oldpage_next = currentpage_next;
 		oldpage = currentpage;
 		oldzoom = currentzoom;
 		oldrotate = currentrotate;
-	}
-
-	if (oldpage_next != currentpage_next || oldzoom != currentzoom || oldrotate != currentrotate)
-	{
-		render_page(&page_tex_next,currentpage_next);
-		oldpage_next = currentpage_next;
 	}
 
 	if (ui.x >= canvas_x && ui.x < canvas_x + canvas_w && ui.y >= canvas_y && ui.y < canvas_y + canvas_h)
@@ -1251,7 +1247,8 @@ static void do_canvas(void)
 	}
 	else
 	{
-		scroll_x = fz_clamp(scroll_x, 0, page_tex.w - canvas_w);
+		scroll_x = (page_tex.w - canvas_w) >> 1;
+		//scroll_x = fz_clamp(scroll_x, 0, page_tex.w - canvas_w);
 		x = canvas_x - scroll_x;
 	}
 
