@@ -1067,8 +1067,8 @@ static void do_app(void)
 		case ' ': number = fz_maxi(number, 1); while (number--) smart_move_forward(9); break;
 		case 'g': jump_to_page(number - 1); break;
 		case 'G': jump_to_page(fz_count_pages(ctx, doc) - 1); break;
-		case '+': currentzoom = zoom_in(currentzoom); break;
-		case '-': currentzoom = zoom_out(currentzoom); break;
+		case '+': if(pdf) {currentzoom = zoom_in(currentzoom);} else {layout_w *= 0.9; reload(); auto_zoom_w();} break;
+		case '-': if(pdf) {currentzoom = zoom_out(currentzoom);} else {layout_w *= 1.1; reload(); auto_zoom_w();} break;
 		case '[': currentrotate += 90; break;
 		case ']': currentrotate -= 90; break;
 		case 'L': showlinks = !showlinks; break;
