@@ -1172,14 +1172,21 @@ static void do_info(void)
 static int set_current_page(void)
 {
 	FILE *fp;
-	char *home = getenv("HOME");
+	char *home;
 	char config_file_name[256];
 
+#ifdef _WIN32
+	char *homedrive = getenv("HOMEDRIVE");
+	home = getenv("HOMEPATH");
+	sprintf(config_file_name,"%s%s\\%s",homedrive,home,CONFIG_FILE);
+#else
+	home = getenv("HOME");
 	sprintf(config_file_name,"%s/%s",home,CONFIG_FILE);
+#endif
 	
 	filestr_head->page = currentpage;
 
-	fp = fopen(config_file_name,"w");
+	fp = fopen(config_file_name,"w+");
 	if(fp != NULL)
 	{
 		for(filestr_new = filestr_head; filestr_new != NULL;filestr_new = filestr_new->next)
@@ -1505,7 +1512,22 @@ static int get_file_size(const char *file)
 {
 	unsigned long filesize = -1;  
 	FILE *fp;  
-	fp = fopen(file, "r");  
+#if defined(_WIN32) || defined(_WIN64)
+	char *s = (char*)file;
+	wchar_t *wname, *d;
+	int c;
+	d = wname = malloc((strlen(file)+1) * sizeof(wchar_t));
+	while (*s) {
+		s += fz_chartorune(&c, s);
+		*d++ = c;
+	}
+	*d = 0;
+	fp = _wfopen(wname, L"rb");
+	free(wname);
+#else
+	fp = fz_fopen(file, "rb");
+#endif
+
 	if(fp == NULL)  
 		return filesize;  
 	fseek(fp, 0L, SEEK_END);  
@@ -1517,20 +1539,27 @@ static int get_file_size(const char *file)
 static int get_last_close_page(void)
 {
 	FILE *fp;
-	char *line = NULL;
-	size_t linecap = 0;
-	ssize_t linelen;
+	char line[1024];
+	int linecap = 1024;
 	char tmp_name[256];
 	int find_flag = 1;
-	char *home = getenv("HOME");
+	char *home;
 	char config_file_name[256];
 
+#ifdef _WIN32
+	char *homedrive = getenv("HOMEDRIVE");
+	home = getenv("HOMEPATH");
+	sprintf(config_file_name,"%s%s\\%s",homedrive,home,CONFIG_FILE);
+#else
+	home = getenv("HOME");
 	sprintf(config_file_name,"%s/%s",home,CONFIG_FILE);
+#endif
 
-	fp = fopen(config_file_name,"r");
+	fp = fopen(config_file_name,"r+");
 	if(fp != NULL)
 	{
-		while ((linelen = getline(&line, &linecap, fp)) > 0)
+		memset(line,0,1024);
+		while ((fgets(line, linecap, fp)) != NULL)
 		{
 			filestr_new = malloc(sizeof(struct filestr_str));
 			memset(filestr_new, 0, sizeof(struct filestr_str));
@@ -1539,11 +1568,19 @@ static int get_last_close_page(void)
 			strncpy(tmp_name,line,strchr(line,'\t') - line);
 			sscanf(strchr(line,'\t'),"%d\t%d",&(filestr_new->file_size),&(filestr_new->page));
 
+			memset(line,0,1024);
+
+#if defined(_WIN32) || defined(_WIN64)
+			filestr_new->filename = malloc((strlen(tmp_name)+2) * sizeof(wchar_t));
+			memset(filestr_new->filename, 0, (strlen(tmp_name)+2) * sizeof(wchar_t));
+#else
 			filestr_new->filename = malloc(strlen(tmp_name) + 2);
 			memset(filestr_new->filename, 0, strlen(tmp_name) + 2);
-			strcpy(filestr_new->filename,tmp_name);
+#endif
 
-			if(!strcmp(filestr_new->filename, title) && filestr_new->file_size == file_size)
+			fz_strlcpy(filestr_new->filename,tmp_name,strlen(tmp_name) + 1);
+
+			if(!fz_strcasecmp(filestr_new->filename, title) && filestr_new->file_size == file_size)
 			{
 				currentpage = filestr_new->page;
 				find_flag = 0;
@@ -1572,9 +1609,15 @@ static int get_last_close_page(void)
 	{
 		filestr_new = malloc(sizeof(struct filestr_str));
 		memset(filestr_new, 0, sizeof(struct filestr_str));
+#if defined(_WIN32) || defined(_WIN64)
+		filestr_new->filename = malloc((strlen(title)+2) * sizeof(wchar_t));
+		memset(filestr_new->filename, 0, (strlen(title)+2) * sizeof(wchar_t));
+#else
 		filestr_new->filename = malloc(strlen(title) + 2);
 		memset(filestr_new->filename, 0, strlen(title) + 2);
-		strcpy(filestr_new->filename,title);
+#endif
+
+		fz_strlcpy(filestr_new->filename,title,strlen(title) + 1);
 		filestr_new->file_size = file_size;
 		filestr_new->page = 1;
 		if(filestr_head == NULL)
@@ -1642,9 +1685,9 @@ int main(int argc, char **argv)
 		++title;
 	else
 		title = filename;
-	
+
 	get_last_close_page();
-	
+
 	memset(&ui, 0, sizeof ui);
 
 	search_input.p = search_input.text;
