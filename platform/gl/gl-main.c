@@ -172,7 +172,7 @@ static fz_link *links = NULL;
 
 static int number = 0;
 
-static struct texture page_tex = { 0 },page_tex_next = { 0 };
+static struct texture page_tex = { 0 },page_tex_next = { 0 },page_tex_tmp = { 0 };
 static int scroll_x = 0, scroll_y = 0, scroll_y_next = 0;
 static int canvas_x = 0, canvas_w = 100;
 static int canvas_y = 0, canvas_h = 100;
@@ -939,13 +939,27 @@ static void smart_move_backward(int step)
 		{
 			forward_flags = 0;
 			currentpage_next = fz_maxi(0, currentpage - 1);
+			if(currentpage_next != oldpage_next)
+			{
+				render_page(&page_tex_next,currentpage_next);
+				oldpage_next = currentpage_next;
+			}
 			scroll_y_next = page_tex.h + scroll_y;
 			if (0 - scroll_y >= canvas_h)
 			{
 				scroll_x = page_tex.w;
 				scroll_y = page_tex.h - canvas_h;
-				currentpage = fz_maxi(0, currentpage - 1);
+				currentpage = currentpage_next;
+				oldpage = currentpage;
+				page_tex_tmp = page_tex;
+				page_tex = page_tex_next;
+				page_tex_next = page_tex_tmp;
 				currentpage_next = fz_maxi(0, currentpage - 1);
+				if(currentpage_next != oldpage_next)
+				{
+					render_page(&page_tex_next,currentpage_next);
+					oldpage_next = currentpage_next;
+				}
 			}
 		}
 	}
@@ -962,13 +976,27 @@ static void smart_move_forward(int step)
 		{
 			forward_flags = 1;
 			currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
+			if(currentpage_next != oldpage_next)
+			{
+				render_page(&page_tex_next,currentpage_next);
+				oldpage_next = currentpage_next;
+			}
 			scroll_y_next = scroll_y + canvas_h - page_tex.h;
 			if(scroll_y_next >= canvas_h)
 			{
 				scroll_x = 0;
 				scroll_y = 0;
-				currentpage = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
+				currentpage = currentpage_next;
+				oldpage = currentpage;
+				page_tex_tmp = page_tex;
+				page_tex = page_tex_next;
+				page_tex_next = page_tex_tmp;
 				currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
+				if(currentpage_next != oldpage_next)
+				{
+					render_page(&page_tex_next,currentpage_next);
+					oldpage_next = currentpage_next;
+				}
 			}
 		}
 	}
