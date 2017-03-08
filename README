@@ -1,5 +1,11 @@
 Initial version of source code is http://mupdf.com/downloads/mupdf-1.10a-source.tar.gz
 
+If you don't want to get the bin tools by compiling the source by yourself, you can 
+
+download the last version binary tools from last_release directory. 
+
+This tool can work on mac and windows now.
+
 I have added or changed fuctions:
 
 0. to run mupdf-x11 on mac is needed xquartz, so I don't compile mupdf-x11 on mac
