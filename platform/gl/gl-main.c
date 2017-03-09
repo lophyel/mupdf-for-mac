@@ -985,7 +985,7 @@ static void smart_move_forward(int step)
 			if(scroll_y_next >= canvas_h)
 			{
 				scroll_x = 0;
-				scroll_y = 0;
+				scroll_y = scroll_y - page_tex.h;
 				currentpage = currentpage_next;
 				oldpage = currentpage;
 				page_tex_tmp = page_tex;
