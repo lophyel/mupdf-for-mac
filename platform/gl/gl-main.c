@@ -474,8 +474,32 @@ static int measure_outline_height(fz_outline *node)
 	while (node)
 	{
 		h += ui.lineheight;
+		node->color_flags = 0;
 		if (node->down)
 			h += measure_outline_height(node->down);
+		node = node->next;
+	}
+	return h;
+}
+
+static int have_found = 0;
+
+static int measure_outline_color_height(fz_outline *node)
+{
+	int h = 0;
+
+	while (node)
+	{
+		h += ui.lineheight;
+		if(node->color_flags == 1)
+		{
+			have_found = 1;
+			return h;
+		}
+		if (node->down)
+			h += measure_outline_color_height(node->down);
+		if(have_found)
+			return h;
 		node = node->next;
 	}
 	return h;
@@ -592,7 +616,11 @@ static int do_outline_imp(fz_outline *node, int end, int x0, int x1, int x, int 
 			if (currentpage == p || (currentpage > p && currentpage < n))
 			{
 				if(currentpage <= d || d == end)
+				{
+					node->color_flags = 1;
 					flag = 1;
+				} else
+					node->color_flags = 0;
 #if 0
 				if(convert_flags)
 					glColor4f(0, 0, 0, 1);
@@ -626,11 +654,14 @@ static void do_outline(fz_outline *node, int outline_w)
 	static int saved_outline_scroll_y = 0;
 	static int saved_ui_y = 0;
 
+	int color_h;
 	int outline_h;
 	int total_h;
 
 	outline_w -= ui.lineheight;
 	outline_h = window_h;
+	have_found = 0;
+	color_h = measure_outline_color_height(outline);
 	total_h = measure_outline_height(outline);
 
 	if (ui.x >= 0 && ui.x < outline_w && ui.y >= 0 && ui.y < outline_h)
@@ -644,12 +675,17 @@ static void do_outline(fz_outline *node, int outline_w)
 		}
 	}
 
-	if (ui.active == id)
-		outline_scroll_y = saved_outline_scroll_y + (saved_ui_y - ui.y) * 5;
+	if(color_h < (outline_h >> 1)) {
+		outline_scroll_y = 0;
+	} else {
+		outline_scroll_y = color_h - (outline_h >> 1);
 
-	if (ui.hot == id)
-		outline_scroll_y -= ui.scroll_y * ui.lineheight * 3;
-
+		if(outline_scroll_y >= total_h - outline_h)
+		{
+			outline_scroll_y = total_h - outline_h;
+		}
+	}
+	
 	ui_scrollbar(outline_w, 0, outline_w+ui.lineheight, outline_h, &outline_scroll_y, outline_h, total_h);
 
 	glScissor(0, 0, outline_w, outline_h);

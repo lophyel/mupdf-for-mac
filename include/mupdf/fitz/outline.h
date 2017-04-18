@@ -39,6 +39,7 @@ struct fz_outline_s
 	fz_outline *next;
 	fz_outline *down;
 	int is_open;
+	int color_flags;
 };
 
 /*
