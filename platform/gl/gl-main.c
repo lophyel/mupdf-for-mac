@@ -986,7 +986,6 @@ static void smart_move_backward(int step)
 				scroll_x = page_tex.w;
 				scroll_y = page_tex.h - canvas_h;
 				currentpage = currentpage_next;
-				oldpage = currentpage;
 				page_tex_tmp = page_tex;
 				page_tex = page_tex_next;
 				page_tex_next = page_tex_tmp;
@@ -1023,7 +1022,6 @@ static void smart_move_forward(int step)
 				scroll_x = 0;
 				scroll_y = scroll_y - page_tex.h;
 				currentpage = currentpage_next;
-				oldpage = currentpage;
 				page_tex_tmp = page_tex;
 				page_tex = page_tex_next;
 				page_tex_next = page_tex_tmp;
