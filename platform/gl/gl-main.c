@@ -1144,8 +1144,8 @@ static void do_app(void)
 		case 'l': scroll_x += 30; break;
 		case 'V': if(showoutline){move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),1);} break;
 		case 'v': if(showoutline){move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),0);} break;
-		case KEY_UP: scroll_y -= 10; break;
-		case KEY_DOWN: scroll_y += 10; break;
+		case KEY_UP:  number = fz_maxi(number, 1); while (number--) smart_move_backward(1); break;
+		case KEY_DOWN: number = fz_maxi(number, 1); while (number--) smart_move_forward(1); break;
 		case KEY_LEFT: scroll_x -= 10; break;
 		case KEY_RIGHT: scroll_x += 10; break;
 		}
