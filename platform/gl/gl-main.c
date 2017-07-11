@@ -168,7 +168,7 @@ static fz_document *doc = NULL;
 static fz_page *page = NULL;
 static pdf_document *pdf = NULL;
 static fz_outline *outline = NULL;
-static fz_link *links = NULL;
+static fz_link *links = NULL, *links_next = NULL;
 
 static int number = 0;
 
@@ -280,9 +280,16 @@ void render_page(struct texture *page_tex_arg,int current_page)
 
 	page = fz_load_page(ctx, doc, current_page);
 
-	fz_drop_link(ctx, links);
-	links = NULL;
-	links = fz_load_links(ctx, page);
+	if (page_tex_arg == &page_tex)
+	{
+		fz_drop_link(ctx, links);
+		links = NULL;
+		links = fz_load_links(ctx, page);
+	} else if(page_tex_arg == &page_tex_next) {
+		fz_drop_link(ctx, links_next);
+		links_next = NULL;
+		links_next = fz_load_links(ctx, page);
+	}
 
 	pix = fz_new_pixmap_from_page_contents(ctx, page, &page_ctm, fz_device_rgb(ctx), 0);
 	if(convert_flags)
@@ -515,7 +522,7 @@ static int move_outline_index(fz_outline *node, fz_outline *beg, int end, int up
 	{
 		if(index_chage_flag)
 			return  0;
-		
+
 		p = node->page;
 		if (p >= 0)
 		{
@@ -550,7 +557,6 @@ static int move_outline_index(fz_outline *node, fz_outline *beg, int end, int up
 								currentpage = node->down->page;
 								index_chage_flag = 1;
 							}
-							
 						} else {
 							if(node->next)
 							{
@@ -585,7 +591,7 @@ static int do_outline_imp(fz_outline *node, int end, int x0, int x1, int x, int 
 	int n = end;
 	int d = end;
 	int flag = 0;
-	
+
 	while (node)
 	{
 		flag = 0;
@@ -685,7 +691,7 @@ static void do_outline(fz_outline *node, int outline_w)
 			outline_scroll_y = total_h - outline_h;
 		}
 	}
-	
+
 	ui_scrollbar(outline_w, 0, outline_w+ui.lineheight, outline_h, &outline_scroll_y, outline_h, total_h);
 
 	glScissor(0, 0, outline_w, outline_h);
@@ -706,6 +712,7 @@ static void do_links(fz_link *link, int xofs, int yofs)
 {
 	fz_rect r;
 	float x, y;
+	float change = window_w / screen_w + ((window_w % screen_w) ? 1 : 0);
 
 	x = ui.x;
 	y = ui.y;
@@ -721,7 +728,7 @@ static void do_links(fz_link *link, int xofs, int yofs)
 		r = link->rect;
 		fz_transform_rect(&r, &page_ctm);
 
-		if (x >= xofs + r.x0 && x < xofs + r.x1 && y >= yofs + r.y0 && y < yofs + r.y1)
+		if (x * change >= xofs + r.x0 && x * change  < xofs + r.x1 && y *change  >= yofs + r.y0 && y * change < yofs  + r.y1)
 		{
 			ui.hot = link;
 			if (!ui.active && ui.down)
@@ -737,6 +744,67 @@ static void do_links(fz_link *link, int xofs, int yofs)
 			else
 				glColor4f(0, 0, 1, 0.1f);
 			glRectf(xofs + r.x0, yofs + r.y0, xofs + r.x1, yofs + r.y1);
+		}
+
+		if (ui.active == link && !ui.down)
+		{
+			if (ui.hot == link)
+			{
+				if (fz_is_external_link(ctx, link->uri))
+					open_browser(link->uri);
+				else
+				{
+					jump_to_page(fz_resolve_link(ctx, doc, link->uri, NULL, NULL));
+					ui_needs_update = 1;
+				}
+			}
+		}
+
+		link = link->next;
+	}
+
+	glDisable(GL_BLEND);
+}
+
+static void do_links_next(fz_link *link, int xofs, int yofs)
+{
+	fz_rect r;
+	float x, y;
+	float y0, y1;
+	float change = window_w / screen_w + ((window_w % screen_w) ? 1 : 0);
+
+	x = ui.x;
+	y = ui.y;
+
+	xofs -= page_tex_next.x;
+	yofs -= page_tex_next.y;
+
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_BLEND);
+
+	while (link)
+	{
+		r = link->rect;
+		fz_transform_rect(&r, &page_ctm);
+		y0 = page_tex.h + yofs + r.y0;
+		y1 = page_tex.h + yofs + r.y1;
+
+		if (x * change >= xofs + r.x0 && x * change  < xofs + r.x1 && y *change  >= y0 && y * change < y1)
+		{
+			ui.hot = link;
+			if (!ui.active && ui.down)
+				ui.active = link;
+		}
+
+		if (ui.hot == link || showlinks)
+		{
+			if (ui.active == link && ui.hot == link)
+				glColor4f(0, 0, 1, 0.4f);
+			else if (ui.hot == link)
+				glColor4f(0, 0, 1, 0.2f);
+			else
+				glColor4f(0, 0, 1, 0.1f);
+			glRectf(xofs + r.x0, y0, xofs + r.x1, y1);
 		}
 
 		if (ui.active == link && !ui.down)
@@ -966,7 +1034,7 @@ static void auto_zoom(void)
 
 static void smart_move_backward(int step)
 {
-	scroll_y -= canvas_h * step / 10;
+	scroll_y -= step;
 	if(scroll_y <= 0)
 	{
 		if(currentpage - 1 < 0)
@@ -1002,7 +1070,7 @@ static void smart_move_backward(int step)
 
 static void smart_move_forward(int step)
 {
-	scroll_y += canvas_h * step / 10;
+	scroll_y += step;
 	if(scroll_y + canvas_h >= page_tex.h)
 	{
 		if(currentpage + 1 >= fz_count_pages(ctx, doc))
@@ -1036,7 +1104,6 @@ static void smart_move_forward(int step)
 	}
 }
 
-
 static void quit(void)
 {
 	while((filestr_new = filestr_head) != NULL)
@@ -1044,7 +1111,7 @@ static void quit(void)
 		filestr_head = filestr_new->next;
 		free(filestr_new);
 	}
-	
+
 	glfwSetWindowShouldClose(window, 1);
 }
 
@@ -1125,8 +1192,8 @@ static void do_app(void)
 		case '>': currentpage += 10 * fz_maxi(number, 1); break;
 		case ',': case KEY_PAGE_UP: currentpage -= fz_maxi(number, 1); break;
 		case '.': case KEY_PAGE_DOWN: currentpage += fz_maxi(number, 1); break;
-		case 'b': number = fz_maxi(number, 1); while (number--) smart_move_backward(9); break;
-		case ' ': number = fz_maxi(number, 1); while (number--) smart_move_forward(9); break;
+		case 'b': number = fz_maxi(number, 1); while (number--) smart_move_backward(canvas_h * 9 / 10); break;
+		case ' ': number = fz_maxi(number, 1); while (number--) smart_move_forward(canvas_h * 9 /10); break;
 		case 'g': jump_to_page(number - 1); break;
 		case 'G': jump_to_page(fz_count_pages(ctx, doc) - 1); break;
 		case '+': if(pdf) {currentzoom = zoom_in(currentzoom);} else {layout_w *= 0.9; reload(); auto_zoom_w();} break;
@@ -1138,16 +1205,18 @@ static void do_app(void)
 		case '/': search_dir = 1; showsearch = 1; search_input.p = search_input.text; search_input.q = search_input.end; break;
 		case '?': search_dir = -1; showsearch = 1; search_input.p = search_input.text; search_input.q = search_input.end; break;
 		case 'i': convert_flags = 1 - convert_flags;render_page(&page_tex,currentpage); render_page(&page_tex_next,currentpage_next); break;
-		case 'k': number = fz_maxi(number, 1); while (number--) smart_move_backward(1); break;
-		case 'j': number = fz_maxi(number, 1); while (number--) smart_move_forward(1); break;
+		case 'k': number = fz_maxi(number, 1); while (number--) smart_move_backward(canvas_h / 10); break;
+		case 'j': number = fz_maxi(number, 1); while (number--) smart_move_forward(canvas_h / 10); break;
 		case 'h': scroll_x -= 30; break;
 		case 'l': scroll_x += 30; break;
 		case 'V': if(showoutline){move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),1);} break;
 		case 'v': if(showoutline){move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),0);} break;
-		case KEY_UP:  number = fz_maxi(number, 1); while (number--) smart_move_backward(1); break;
-		case KEY_DOWN: number = fz_maxi(number, 1); while (number--) smart_move_forward(1); break;
+		case KEY_UP:  number = fz_maxi(number, 1); while (number--) smart_move_backward(canvas_h / 10); break;
+		case KEY_DOWN: number = fz_maxi(number, 1); while (number--) smart_move_forward(canvas_h / 10); break;
 		case KEY_LEFT: scroll_x -= 10; break;
 		case KEY_RIGHT: scroll_x += 10; break;
+		default:
+			printf("ui.key = %d\n", ui.key);
 		}
 
 		if (ui.key >= '0' && ui.key <= '9')
@@ -1245,7 +1314,7 @@ static int set_current_page(void)
 	home = getenv("HOME");
 	sprintf(config_file_name,"%s/%s",home,CONFIG_FILE);
 #endif
-	
+
 	filestr_head->page = currentpage;
 
 	fp = fopen(config_file_name,"w+");
@@ -1272,7 +1341,7 @@ static void do_canvas(void)
 
 	if(oldpage != currentpage)
 		set_current_page();
-	
+
 	if (oldpage_next != currentpage_next || oldpage != currentpage || oldzoom != currentzoom || oldrotate != currentrotate)
 	{
 		render_page(&page_tex,currentpage);
@@ -1334,6 +1403,7 @@ static void do_canvas(void)
 	if (!search_active)
 	{
 		do_links(links, x, y);
+		do_links_next(links_next, x, y);
 		do_page_selection(x, y, x+page_tex.w, y+page_tex.h);
 		if (search_hit_page == currentpage && search_hit_count > 0)
 			do_search_hits(x, y);
@@ -1529,8 +1599,14 @@ static void on_mouse_motion(GLFWwindow *window, double x, double y)
 
 static void on_scroll(GLFWwindow *window, double x, double y)
 {
-	ui.scroll_x = x;
-	ui.scroll_y = y;
+	int step = y * ui.lineheight * 3;
+
+	if (!step)
+		return;
+	if (step < 0)
+		smart_move_forward(-step);
+	else
+		smart_move_backward(step);
 	run_main_loop();
 	ui.scroll_x = ui.scroll_y = 0;
 }
