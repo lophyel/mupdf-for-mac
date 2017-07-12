@@ -786,8 +786,14 @@ static void do_links_next(fz_link *link, int xofs, int yofs)
 	{
 		r = link->rect;
 		fz_transform_rect(&r, &page_ctm);
-		y0 = page_tex.h + yofs + r.y0;
-		y1 = page_tex.h + yofs + r.y1;
+		if (currentpage_next > currentpage)
+		{
+			y0 = page_tex.h + yofs + r.y0;
+			y1 = page_tex.h + yofs + r.y1;
+		} else {
+			y0 = -page_tex.h + yofs + r.y0;
+			y1 = -page_tex.h + yofs + r.y1;
+		}
 
 		if (x * change >= xofs + r.x0 && x * change  < xofs + r.x1 && y *change  >= y0 && y * change < y1)
 		{
@@ -1045,6 +1051,9 @@ static void smart_move_backward(int step)
 			currentpage_next = fz_maxi(0, currentpage - 1);
 			if(currentpage_next != oldpage_next)
 			{
+				fz_drop_link(ctx, links);
+				links = links_next;
+				links_next = NULL;
 				render_page(&page_tex_next,currentpage_next);
 				oldpage_next = currentpage_next;
 			}
@@ -1060,6 +1069,9 @@ static void smart_move_backward(int step)
 				currentpage_next = fz_maxi(0, currentpage - 1);
 				if(currentpage_next != oldpage_next)
 				{
+					fz_drop_link(ctx, links);
+					links = links_next;
+					links_next = NULL;
 					render_page(&page_tex_next,currentpage_next);
 					oldpage_next = currentpage_next;
 				}
@@ -1081,6 +1093,9 @@ static void smart_move_forward(int step)
 			currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
 			if(currentpage_next != oldpage_next)
 			{
+				fz_drop_link(ctx, links);
+				links = links_next;
+				links_next = NULL;
 				render_page(&page_tex_next,currentpage_next);
 				oldpage_next = currentpage_next;
 			}
@@ -1096,6 +1111,9 @@ static void smart_move_forward(int step)
 				currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
 				if(currentpage_next != oldpage_next)
 				{
+					fz_drop_link(ctx, links);
+					links = links_next;
+					links_next = NULL;
 					render_page(&page_tex_next,currentpage_next);
 					oldpage_next = currentpage_next;
 				}
@@ -1344,8 +1362,11 @@ static void do_canvas(void)
 
 	if (oldpage_next != currentpage_next || oldpage != currentpage || oldzoom != currentzoom || oldrotate != currentrotate)
 	{
-		render_page(&page_tex,currentpage);
-		render_page(&page_tex_next,currentpage_next);
+		if (oldzoom != currentzoom || oldrotate != currentrotate)
+		{
+			render_page(&page_tex,currentpage);
+			render_page(&page_tex_next,currentpage_next);
+		}
 		update_title();
 		oldpage_next = currentpage_next;
 		oldpage = currentpage;
