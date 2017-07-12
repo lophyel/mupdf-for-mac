@@ -578,6 +578,8 @@ static int move_outline_index(fz_outline *node, fz_outline *beg, int end, int up
 							}
 						}
 					}
+					render_page(&page_tex,currentpage);
+					scroll_y = 0;
 				}
 			}
 		}
