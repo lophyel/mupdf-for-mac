@@ -35,6 +35,7 @@ static GLint max_texture_size = 8192;
 static int ui_needs_update = 0;
 static int convert_flags = 0;
 static int index_chage_flag = 0;
+static int scroll_show_index = 1;
 static fz_outline *move_last = NULL;
 static int forward_flags = 1;
 
@@ -359,6 +360,8 @@ static void jump_to_page(int newpage)
 	clear_future();
 	push_history();
 	currentpage = newpage;
+	render_page(&page_tex,currentpage);
+	scroll_y = 0;
 	push_history();
 }
 
@@ -368,6 +371,8 @@ static void pop_history(void)
 	push_future();
 	while (history_count > 0 && currentpage == here)
 		currentpage = history[--history_count];
+	render_page(&page_tex,currentpage);
+	scroll_y = 0;
 }
 
 static void pop_future(void)
@@ -376,6 +381,8 @@ static void pop_future(void)
 	push_history();
 	while (future_count > 0 && currentpage == here)
 		currentpage = future[--future_count];
+	render_page(&page_tex,currentpage);
+	scroll_y = 0;
 	push_history();
 }
 
@@ -591,6 +598,7 @@ static int do_outline_imp(fz_outline *node, int end, int x0, int x1, int x, int 
 	int n = end;
 	int d = end;
 	int flag = 0;
+	float change = window_w / screen_w + ((window_w % screen_w) ? 1 : 0);
 
 	while (node)
 	{
@@ -598,7 +606,7 @@ static int do_outline_imp(fz_outline *node, int end, int x0, int x1, int x, int 
 		p = node->page;
 		if (p >= 0)
 		{
-			if (ui.x >= x0 && ui.x < x1 && ui.y >= y + h && ui.y < y + h + ui.lineheight)
+			if (ui.x * change  >= x0 && ui.x * change < x1 && ui.y * change >= y + h && ui.y * change < y + h + ui.lineheight)
 			{
 				ui.hot = node;
 				if (!ui.active && ui.down)
@@ -659,10 +667,11 @@ static void do_outline(fz_outline *node, int outline_w)
 	static int outline_scroll_y = 0;
 	static int saved_outline_scroll_y = 0;
 	static int saved_ui_y = 0;
+	float change = window_w / screen_w + ((window_w % screen_w) ? 1 : 0);
 
-	int color_h;
 	int outline_h;
 	int total_h;
+	int color_h;
 
 	outline_w -= ui.lineheight;
 	outline_h = window_h;
@@ -670,7 +679,7 @@ static void do_outline(fz_outline *node, int outline_w)
 	color_h = measure_outline_color_height(outline);
 	total_h = measure_outline_height(outline);
 
-	if (ui.x >= 0 && ui.x < outline_w && ui.y >= 0 && ui.y < outline_h)
+	if (ui.x * change  >= 0 && ui.x * change  < outline_w && ui.y * change  >= 0 && ui.y * change  < outline_h)
 	{
 		ui.hot = id;
 		if (!ui.active && ui.middle)
@@ -680,15 +689,23 @@ static void do_outline(fz_outline *node, int outline_w)
 			saved_outline_scroll_y = outline_scroll_y;
 		}
 	}
+	if (scroll_show_index)
+	{
+		if (ui.active == id)
+			outline_scroll_y = saved_outline_scroll_y + (saved_ui_y - ui.y) * 5;
 
-	if(color_h < (outline_h >> 1)) {
-		outline_scroll_y = 0;
+		if (ui.hot == id)
+			outline_scroll_y -= ui.scroll_y * ui.lineheight * 3;
 	} else {
-		outline_scroll_y = color_h - (outline_h >> 1);
+		if(color_h < (outline_h >> 1)) {
+			outline_scroll_y = 0;
+		} else {
+			outline_scroll_y = color_h - (outline_h >> 1);
 
-		if(outline_scroll_y >= total_h - outline_h)
-		{
-			outline_scroll_y = total_h - outline_h;
+			if(outline_scroll_y >= total_h - outline_h)
+			{
+				outline_scroll_y = total_h - outline_h;
+			}
 		}
 	}
 
@@ -756,6 +773,9 @@ static void do_links(fz_link *link, int xofs, int yofs)
 				{
 					jump_to_page(fz_resolve_link(ctx, doc, link->uri, NULL, NULL));
 					ui_needs_update = 1;
+					currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
+					render_page(&page_tex_next,currentpage);
+					return;
 				}
 			}
 		}
@@ -823,6 +843,9 @@ static void do_links_next(fz_link *link, int xofs, int yofs)
 				{
 					jump_to_page(fz_resolve_link(ctx, doc, link->uri, NULL, NULL));
 					ui_needs_update = 1;
+					currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
+					render_page(&page_tex_next,currentpage_next);
+					return;
 				}
 			}
 		}
@@ -1000,7 +1023,7 @@ static void reload(void)
 	currentpage_next = fz_mini(currentpage + 1, fz_count_pages(ctx, doc) - 1);
 
 	render_page(&page_tex,currentpage);
-	render_page(&page_tex_next,currentpage);
+	render_page(&page_tex_next,currentpage_next);
 	update_title();
 }
 
@@ -1201,7 +1224,7 @@ static void do_app(void)
 		case 'f': toggle_fullscreen(); break;
 		case 'w': shrinkwrap(); break;
 		case 'r': reload(); break;
-		case 'o': toggle_outline(); break;
+		case 'o': scroll_show_index = 0; toggle_outline(); break;
 		case 'W': auto_zoom_w(); break;
 		case 'H': auto_zoom_h(); break;
 		case 'Z': auto_zoom(); break;
@@ -1227,14 +1250,12 @@ static void do_app(void)
 		case 'j': number = fz_maxi(number, 1); while (number--) smart_move_forward(canvas_h / 10); break;
 		case 'h': scroll_x -= 30; break;
 		case 'l': scroll_x += 30; break;
-		case 'V': if(showoutline){move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),1);} break;
-		case 'v': if(showoutline){move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),0);} break;
+		case 'V': if(showoutline){scroll_show_index = 0;move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),1);} break;
+		case 'v': if(showoutline){scroll_show_index = 0;move_last = NULL; index_chage_flag = 0;move_outline_index(outline,outline,fz_count_pages(ctx,doc),0);} break;
 		case KEY_UP:  number = fz_maxi(number, 1); while (number--) smart_move_backward(canvas_h / 10); break;
 		case KEY_DOWN: number = fz_maxi(number, 1); while (number--) smart_move_forward(canvas_h / 10); break;
 		case KEY_LEFT: scroll_x -= 10; break;
 		case KEY_RIGHT: scroll_x += 10; break;
-		default:
-			printf("ui.key = %d\n", ui.key);
 		}
 
 		if (ui.key >= '0' && ui.key <= '9')
@@ -1620,14 +1641,22 @@ static void on_mouse_motion(GLFWwindow *window, double x, double y)
 
 static void on_scroll(GLFWwindow *window, double x, double y)
 {
+	float change = window_w / screen_w + ((window_w % screen_w) ? 1 : 0);
 	int step = y * ui.lineheight * 3;
 
-	if (!step)
-		return;
-	if (step < 0)
-		smart_move_forward(-step);
-	else
-		smart_move_backward(step);
+	if(showoutline && ui.x * change  >= 0 && ui.x * change  < canvas_x - ui.lineheight )
+	{
+		ui.scroll_x = x;
+		ui.scroll_y = y;
+		scroll_show_index = 1;
+	} else {
+		if (!step)
+			return;
+		if (step < 0)
+			smart_move_forward(-step);
+		else
+			smart_move_backward(step);
+	}
 	run_main_loop();
 	ui.scroll_x = ui.scroll_y = 0;
 }
@@ -1763,7 +1792,7 @@ static int get_last_close_page(void)
 			}
 		}
 		fclose(fp);
-	} 
+	}
 	if(find_flag)
 	{
 		filestr_new = malloc(sizeof(struct filestr_str));
