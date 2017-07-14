@@ -861,22 +861,23 @@ static void do_links_next(fz_link *link, int xofs, int yofs)
 static void do_page_selection(int x0, int y0, int x1, int y1)
 {
 	static fz_rect sel;
+	float change = window_w / screen_w + ((window_w % screen_w) ? 1 : 0);
 
-	if (ui.x >= x0 && ui.x < x1 && ui.y >= y0 && ui.y < y1)
+	if (ui.x * change >= x0 && ui.x * change  < x1 && ui.y * change >= y0 && ui.y * change < y1)
 	{
 		ui.hot = &sel;
 		if (!ui.active && ui.right)
 		{
 			ui.active = &sel;
-			sel.x0 = sel.x1 = ui.x;
-			sel.y0 = sel.y1 = ui.y;
+			sel.x0 = sel.x1 = ui.x * change;
+			sel.y0 = sel.y1 = ui.y * change;
 		}
 	}
 
 	if (ui.active == &sel)
 	{
-		sel.x1 = ui.x;
-		sel.y1 = ui.y;
+		sel.x1 = ui.x * change;
+		sel.y1 = ui.y * change;
 
 		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO); /* invert destination color */
 		glEnable(GL_BLEND);
