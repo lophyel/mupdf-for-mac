@@ -166,7 +166,7 @@ static char *layout_css = NULL;
 
 static const char *title = "MuPDF/GL";
 static fz_document *doc = NULL;
-static fz_page *page = NULL;
+static fz_page *page = NULL, *page_next = NULL;
 static pdf_document *pdf = NULL;
 static fz_outline *outline = NULL;
 static fz_link *links = NULL, *links_next = NULL;
@@ -272,27 +272,34 @@ void render_page(struct texture *page_tex_arg,int current_page)
 {
 	fz_annot *annot;
 	fz_pixmap *pix;
+	fz_page *p;
 
+	if (page_tex_arg == &page_tex)
+	{
+		p = page;
+	} else {
+		p = page_next;
+	}
 	fz_scale(&page_ctm, currentzoom / 72, currentzoom / 72);
 	fz_pre_rotate(&page_ctm, -currentrotate);
 	fz_invert_matrix(&page_inv_ctm, &page_ctm);
 
-	fz_drop_page(ctx, page);
+	fz_drop_page(ctx, p);
 
-	page = fz_load_page(ctx, doc, current_page);
+	p = fz_load_page(ctx, doc, current_page);
 
 	if (page_tex_arg == &page_tex)
 	{
 		fz_drop_link(ctx, links);
 		links = NULL;
-		links = fz_load_links(ctx, page);
+		links = fz_load_links(ctx, p);
 	} else if(page_tex_arg == &page_tex_next) {
 		fz_drop_link(ctx, links_next);
 		links_next = NULL;
-		links_next = fz_load_links(ctx, page);
+		links_next = fz_load_links(ctx, p);
 	}
 
-	pix = fz_new_pixmap_from_page_contents(ctx, page, &page_ctm, fz_device_rgb(ctx), 0);
+	pix = fz_new_pixmap_from_page_contents(ctx, p, &page_ctm, fz_device_rgb(ctx), 0);
 	if(convert_flags)
 	{
 		int count = pix->w * pix->h * pix->n;
@@ -309,7 +316,7 @@ void render_page(struct texture *page_tex_arg,int current_page)
 	fz_drop_pixmap(ctx, pix);
 
 	annot_count = 0;
-	for (annot = fz_first_annot(ctx, page); annot; annot = fz_next_annot(ctx, annot))
+	for (annot = fz_first_annot(ctx, p); annot; annot = fz_next_annot(ctx, annot))
 	{
 		pix = fz_new_pixmap_from_annot(ctx, annot, &page_ctm, fz_device_rgb(ctx), 1);
 		texture_from_pixmap(&annot_tex[annot_count++], pix);
@@ -320,7 +327,12 @@ void render_page(struct texture *page_tex_arg,int current_page)
 			break;
 		}
 	}
-
+	if (page_tex_arg == &page_tex)
+	{
+		page = p;
+	} else {
+		page_next = p;
+	}
 }
 
 static void push_history(void)
@@ -386,7 +398,7 @@ static void pop_future(void)
 	push_history();
 }
 
-static void do_copy_region(fz_rect *screen_sel, int xofs, int yofs)
+static void do_copy_region(fz_rect *screen_sel, int xofs, int yofs, fz_page *p)
 {
 	fz_buffer *buf;
 	fz_rect page_sel;
@@ -402,9 +414,9 @@ static void do_copy_region(fz_rect *screen_sel, int xofs, int yofs)
 	fz_transform_rect(&page_sel, &page_inv_ctm);
 
 #ifdef _WIN32
-	buf = fz_new_buffer_from_page(ctx, page, &page_sel, 1, NULL);
+	buf = fz_new_buffer_from_page(ctx, p, &page_sel, 1, NULL);
 #else
-	buf = fz_new_buffer_from_page(ctx, page, &page_sel, 0, NULL);
+	buf = fz_new_buffer_from_page(ctx, p, &page_sel, 0, NULL);
 #endif
 	glfwSetClipboardString(window, fz_string_from_buffer(ctx, buf));
 	fz_drop_buffer(ctx, buf);
@@ -866,7 +878,7 @@ static void do_page_selection(int x0, int y0, int x1, int y1)
 	if (ui.x * change >= x0 && ui.x * change  < x1 && ui.y * change >= y0 && ui.y * change < y1)
 	{
 		ui.hot = &sel;
-		if (!ui.active && ui.right)
+		if (!ui.active && ui.down)
 		{
 			ui.active = &sel;
 			sel.x0 = sel.x1 = ui.x * change;
@@ -888,9 +900,55 @@ static void do_page_selection(int x0, int y0, int x1, int y1)
 		glDisable(GL_BLEND);
 	}
 
-	if (ui.active == &sel && !ui.right)
+	if (ui.active == &sel && !ui.down)
 	{
-		do_copy_region(&sel, x0, y0);
+		do_copy_region(&sel, x0, y0, page);
+		ui_needs_update = 1;
+	}
+}
+
+static void do_page_next_selection(int x0, int y0, int x1, int y1)
+{
+	static fz_rect sel;
+	float change = window_w / screen_w + ((window_w % screen_w) ? 1 : 0);
+
+	if (currentpage_next > currentpage)
+	{
+		y0 = page_tex.h + y0;
+		y1 = page_tex.h + y1;
+	} else {
+		y0 = -page_tex.h + y0;
+		y1 = -page_tex.h + y1;
+	}
+
+	if (ui.x * change >= x0 && ui.x * change  < x1 && ui.y * change >= y0 && ui.y * change < y1)
+	{
+		ui.hot = &sel;
+		if (!ui.active && ui.down)
+		{
+			ui.active = &sel;
+			sel.x0 = sel.x1 = ui.x * change;
+			sel.y0 = sel.y1 = ui.y * change;
+		}
+	}
+
+	if (ui.active == &sel)
+	{
+		sel.x1 = ui.x * change;
+		sel.y1 = ui.y * change;
+
+		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO); /* invert destination color */
+		glEnable(GL_BLEND);
+
+		glColor4f(1, 1, 1, 1);
+		glRectf(sel.x0, sel.y0, sel.x1 + 1, sel.y1 + 1);
+
+		glDisable(GL_BLEND);
+	}
+
+	if (ui.active == &sel && !ui.down)
+	{
+		do_copy_region(&sel, x0, y0, page_next);
 		ui_needs_update = 1;
 	}
 }
@@ -1450,6 +1508,7 @@ static void do_canvas(void)
 		do_links(links, x, y);
 		do_links_next(links_next, x, y);
 		do_page_selection(x, y, x+page_tex.w, y+page_tex.h);
+		do_page_next_selection(x, y, x+page_tex.w, y+page_tex.h);
 		if (search_hit_page == currentpage && search_hit_count > 0)
 			do_search_hits(x, y);
 	}
@@ -1953,6 +2012,7 @@ int main(int argc, char **argv)
 
 	fz_drop_link(ctx, links);
 	fz_drop_page(ctx, page);
+	fz_drop_page(ctx, page_next);
 	fz_drop_outline(ctx, outline);
 	fz_drop_document(ctx, doc);
 	fz_drop_context(ctx);
