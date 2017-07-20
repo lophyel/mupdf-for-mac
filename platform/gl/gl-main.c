@@ -24,6 +24,8 @@ enum
 
 #define CONFIG_FILE ".mupdf"
 
+static int pix_index = 128;
+static int pix_change_flag = 0;
 struct ui ui;
 fz_context *ctx = NULL;
 GLFWwindow *window = NULL;
@@ -305,11 +307,38 @@ void render_page(struct texture *page_tex_arg,int current_page)
 		int count = pix->w * pix->h * pix->n;
 		int loop;
 		unsigned int *i;
+		unsigned char *pixc;
+		int pl;
 		// maybe pix->w and pix->h is always even or the last pix is not convert
 		for(loop = 0; loop + 4 <= count; loop += 4)
 		{
+			if (pix_change_flag)
+			{
+				pixc = (unsigned char *)(pix->samples + loop);
+				for (pl = 0; pl < 4; pl++)
+				{
+					if (pixc[pl] > pix_index)pixc[pl] = 255;
+					else if (pixc[pl] < pix_index)pixc[pl] = 0;
+				}
+			}
 			i = (unsigned int *)(pix->samples + loop);
 			*i = ~*i;
+		}
+	} else if (pix_change_flag) {
+		int count = pix->w * pix->h * pix->n;
+		int loop;
+		unsigned char *pixc;
+		int pl;
+		// maybe pix->w and pix->h is always even or the last pix is not convert
+		for(loop = 0; loop + 4 <= count; loop += 4)
+		{
+
+			pixc = (unsigned char *)(pix->samples + loop);
+			for (pl = 0; pl < 4; pl++)
+			{
+				if (pixc[pl] > pix_index)pixc[pl] = 255;
+				else if (pixc[pl] < pix_index) pixc[pl] = 0;
+			}
 		}
 	}
 	texture_from_pixmap(page_tex_arg, pix);
@@ -1292,6 +1321,9 @@ static void do_app(void)
 		case 'z': currentzoom = number > 0 ? number : DEFRES; break;
 		case '<': currentpage -= 10 * fz_maxi(number, 1); break;
 		case '>': currentpage += 10 * fz_maxi(number, 1); break;
+		case 'A': pix_change_flag = 1 - pix_change_flag;render_page(&page_tex,currentpage);break;
+		case 'a': if(pix_change_flag){pix_index += 5;render_page(&page_tex,currentpage);}break;
+		case 'd': if(pix_change_flag){pix_index -= 5;render_page(&page_tex,currentpage);}break;
 		case ',': case KEY_PAGE_UP: currentpage -= fz_maxi(number, 1); break;
 		case '.': case KEY_PAGE_DOWN: currentpage += fz_maxi(number, 1); break;
 		case 'b': number = fz_maxi(number, 1); while (number--) smart_move_backward(canvas_h * 9 / 10); break;
@@ -1422,7 +1454,7 @@ static int set_current_page(void)
 	{
 		for(filestr_new = filestr_head; filestr_new != NULL;filestr_new = filestr_new->next)
 		{
-			fprintf(fp,"%s\t%d\t%d\n",filestr_new->filename,filestr_new->file_size,filestr_new->page);
+			fprintf(fp,"%s\t%d\t%d\t%d\t%d\n",filestr_new->filename,filestr_new->file_size,filestr_new->page,pix_change_flag,pix_index);
 		}
 		fclose(fp);
 	}
@@ -1816,7 +1848,7 @@ static int get_last_close_page(void)
 
 			memset(tmp_name,0,sizeof(tmp_name));
 			strncpy(tmp_name,line,strchr(line,'\t') - line);
-			sscanf(strchr(line,'\t'),"%d\t%d",&(filestr_new->file_size),&(filestr_new->page));
+			sscanf(strchr(line,'\t'),"%d\t%d\t%d\t%d",&(filestr_new->file_size),&(filestr_new->page),&pix_change_flag,&pix_index);
 
 			memset(line,0,1024);
 
