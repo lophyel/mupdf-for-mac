@@ -318,7 +318,7 @@ void render_page(struct texture *page_tex_arg,int current_page)
 				for (pl = 0; pl < 4; pl++)
 				{
 					if (pixc[pl] > pix_index)pixc[pl] = 255;
-					else if (pixc[pl] < pix_index)pixc[pl] = 0;
+					else pixc[pl] = 0;
 				}
 			}
 			i = (unsigned int *)(pix->samples + loop);
@@ -337,7 +337,7 @@ void render_page(struct texture *page_tex_arg,int current_page)
 			for (pl = 0; pl < 4; pl++)
 			{
 				if (pixc[pl] > pix_index)pixc[pl] = 255;
-				else if (pixc[pl] < pix_index) pixc[pl] = 0;
+				else pixc[pl] = 0;
 			}
 		}
 	}
