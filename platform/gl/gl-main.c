@@ -308,18 +308,16 @@ void render_page(struct texture *page_tex_arg,int current_page)
 		int loop;
 		unsigned int *i;
 		unsigned char *pixc;
-		int pl;
 		// maybe pix->w and pix->h is always even or the last pix is not convert
 		for(loop = 0; loop + 4 <= count; loop += 4)
 		{
 			if (pix_change_flag)
 			{
 				pixc = (unsigned char *)(pix->samples + loop);
-				for (pl = 0; pl < 4; pl++)
-				{
-					if (pixc[pl] > pix_index)pixc[pl] = 255;
-					else pixc[pl] = 0;
-				}
+				if (pixc[0] > pix_index)pixc[0] = 255;else pixc[0] = 0;
+				if (pixc[1] > pix_index)pixc[1] = 255;else pixc[1] = 0;
+				if (pixc[2] > pix_index)pixc[2] = 255;else pixc[2] = 0;
+				if (pixc[3] > pix_index)pixc[3] = 255;else pixc[3] = 0;
 			}
 			i = (unsigned int *)(pix->samples + loop);
 			*i = ~*i;
@@ -328,17 +326,15 @@ void render_page(struct texture *page_tex_arg,int current_page)
 		int count = pix->w * pix->h * pix->n;
 		int loop;
 		unsigned char *pixc;
-		int pl;
 		// maybe pix->w and pix->h is always even or the last pix is not convert
 		for(loop = 0; loop + 4 <= count; loop += 4)
 		{
 
 			pixc = (unsigned char *)(pix->samples + loop);
-			for (pl = 0; pl < 4; pl++)
-			{
-				if (pixc[pl] > pix_index)pixc[pl] = 255;
-				else pixc[pl] = 0;
-			}
+			if (pixc[0] > pix_index)pixc[0] = 255;else pixc[0] = 0;
+			if (pixc[1] > pix_index)pixc[1] = 255;else pixc[1] = 0;
+			if (pixc[2] > pix_index)pixc[2] = 255;else pixc[2] = 0;
+			if (pixc[3] > pix_index)pixc[3] = 255;else pixc[3] = 0;
 		}
 	}
 	texture_from_pixmap(page_tex_arg, pix);
