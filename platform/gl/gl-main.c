@@ -158,6 +158,8 @@ static struct filestr_str{
 	char *filename;
 	int file_size;
 	int page;
+	int pix_index;
+	int pix_change_flag;
 } *filestr_head = NULL,*filestr_end = NULL,*filestr_new = NULL;
 
 static char *password = "";
@@ -1444,13 +1446,16 @@ static int set_current_page(void)
 #endif
 
 	filestr_head->page = currentpage;
+	filestr_head->pix_change_flag = pix_change_flag;
+	filestr_head->pix_index = pix_index;
 
 	fp = fopen(config_file_name,"w+");
 	if(fp != NULL)
 	{
 		for(filestr_new = filestr_head; filestr_new != NULL;filestr_new = filestr_new->next)
 		{
-			fprintf(fp,"%s\t%d\t%d\t%d\t%d\n",filestr_new->filename,filestr_new->file_size,filestr_new->page,pix_change_flag,pix_index);
+			fprintf(fp,"%s\t%d\t%d\t%d\t%d\n",filestr_new->filename,filestr_new->file_size,filestr_new->page,
+				filestr_new->pix_change_flag,filestr_new->pix_index);
 		}
 		fclose(fp);
 	}
@@ -1844,7 +1849,8 @@ static int get_last_close_page(void)
 
 			memset(tmp_name,0,sizeof(tmp_name));
 			strncpy(tmp_name,line,strchr(line,'\t') - line);
-			sscanf(strchr(line,'\t'),"%d\t%d\t%d\t%d",&(filestr_new->file_size),&(filestr_new->page),&pix_change_flag,&pix_index);
+			sscanf(strchr(line,'\t'),"%d\t%d\t%d\t%d",&(filestr_new->file_size),&(filestr_new->page),
+			       &(filestr_new->pix_change_flag),&(filestr_new->pix_index));
 
 			memset(line,0,1024);
 
@@ -1861,6 +1867,8 @@ static int get_last_close_page(void)
 			if(!fz_strcasecmp(filestr_new->filename, title) && filestr_new->file_size == file_size)
 			{
 				currentpage = filestr_new->page;
+				pix_change_flag = filestr_new->pix_change_flag;
+				pix_index = filestr_new->pix_index;
 				find_flag = 0;
 				if(filestr_head == NULL)
 				{
